@@ -7,15 +7,77 @@ Complete project details at https://RandomNerdTutorials.com/telegram-control-esp
 #ifdef ESP32
   #include <SPIFFS.h>
 #endif
-
+#include <UniversalTelegramBot.h> // Universal Telegram Bot Library written by Brian Lough: https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 
+#ifdef ESP8266
+  X509List cert(TELEGRAM_CERTIFICATE_ROOT);
+#endif
 //define your default values here, if there are different values in config.json, they are overwritten.
 char botToken[50] = "";  // your Bot Token (Get from Botfather);
 char chatID [15] = "";   // your Chat ID (search for “IDBot” or open this link t.me/myidbot in your smartphone.)
+WiFiClientSecure client;
+UniversalTelegramBot bot(botToken, client);
+// Checks for new messages every 1 second.
+int botRequestDelay = 1000;
+unsigned long lastTimeBotRan;
+
+const int ledPin = 2;
+bool ledState = LOW;
 
 //flag for saving data
 bool shouldSaveConfig = false;
+
+// Handle what happens when you receive new messages
+void handleNewMessages(int numNewMessages) {
+  Serial.println("handleNewMessages");
+  Serial.println(String(numNewMessages));
+
+  for (int i=0; i<numNewMessages; i++) {
+    // Chat id of the requester
+    String chat_id = String(bot.messages[i].chat_id);
+    if (chat_id != chatID){
+      bot.sendMessage(chat_id, "Unauthorized user", "");
+      continue;
+    }
+    
+    // Print the received message
+    String text = bot.messages[i].text;
+    Serial.println(text);
+
+    String from_name = bot.messages[i].from_name;
+
+    if (text == "/start") {
+      String welcome = "Welcome, " + from_name + ".\n";
+      welcome += "Use the following commands to control your outputs.\n\n";
+      welcome += "/led_on to turn GPIO ON \n";
+      welcome += "/led_off to turn GPIO OFF \n";
+      welcome += "/state to request current GPIO state \n";
+      bot.sendMessage(chat_id, welcome, "");
+    }
+
+    if (text == "/led_on") {
+      bot.sendMessage(chat_id, "LED state set to ON", "");
+      ledState = HIGH;
+      digitalWrite(ledPin, ledState);
+    }
+    
+    if (text == "/led_off") {
+      bot.sendMessage(chat_id, "LED state set to OFF", "");
+      ledState = LOW;
+      digitalWrite(ledPin, ledState);
+    }
+    
+    if (text == "/state") {
+      if (digitalRead(ledPin)){
+        bot.sendMessage(chat_id, "LED is ON", "");
+      }
+      else{
+        bot.sendMessage(chat_id, "LED is OFF", "");
+      }
+    }
+  }
+}
 
 //callback notifying us of the need to save config
 void saveConfigCallback () {
@@ -28,8 +90,17 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
 
-  //clean FS, for testing
-  SPIFFS.format();
+  #ifdef ESP8266
+    configTime(0, 0, "pool.ntp.org");      // get UTC time via NTP
+    client.setTrustAnchors(&cert); // Add root certificate for api.telegram.org
+  #endif
+
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, ledState);
+
+  //-----------------clean FS, for testing-----------------
+  //SPIFFS.format();
+  //-------------------------------------------------------
 
   //read configuration from FS json
   Serial.println("mounting FS...");
@@ -91,8 +162,9 @@ void setup() {
   wifiManager.addParameter(&custom_botToken);
   wifiManager.addParameter(&custom_chatID);
 
-  //reset settings - for testing
-  wifiManager.resetSettings();
+  //-----------reset settings - for testing--------------
+  //wifiManager.resetSettings();
+  //-----------------------------------------------------
 
   //set minimu quality of signal so it ignores AP's under that quality
   //defaults to 8%
@@ -124,7 +196,7 @@ void setup() {
   Serial.println("The values in the file are: ");
   Serial.println("\tbotToken : " + String(botToken));
   Serial.println("\tchatID : " + String(chatID));
-
+  bot.updateToken(botToken);
   //save the custom parameters to FS
   if (shouldSaveConfig) {
     Serial.println("saving config");
@@ -158,6 +230,15 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  if (millis() > lastTimeBotRan + botRequestDelay)  {
+    int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+
+    while(numNewMessages) {
+      Serial.println("got response");
+      handleNewMessages(numNewMessages);
+      numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    }
+    lastTimeBotRan = millis();
+  }
 
 }
