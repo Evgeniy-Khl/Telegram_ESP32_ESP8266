@@ -5,14 +5,6 @@
 // #define MQTT_BUFFER 512
 #define DEBUG_BAUD 115200
 
-#ifdef isUART_HARDWARE
-#define INVERTER_TX 1
-#define INVERTER_RX 3
-#else
-#define INVERTER_TX 13
-#define INVERTER_RX 12
-#endif
-
 #define LED_NET 4
 // implement this
 // https://github.com/arduino-libraries/Arduino_DebugUtils

@@ -1,8 +1,12 @@
 /*
 Complete project details at https://RandomNerdTutorials.com/telegram-control-esp32-esp8266-nodemcu-outputs/
 */
+#include <SoftwareSerial.h>
 #include <LittleFS.h>             //this needs to be first, or it all crashes and burns...
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+
+#define MYPORT_TX 13
+#define MYPORT_RX 12
 
 #ifdef ESP32
   #include <LittleFS.h>
@@ -16,6 +20,13 @@ Complete project details at https://RandomNerdTutorials.com/telegram-control-esp
 //define your default values here, if there are different values in config.json, they are overwritten.
 char botToken[50] = "";  // your Bot Token (Get from Botfather);
 char chatID [15] = "";   // your Chat ID (search for “IDBot” or open this link t.me/myidbot in your smartphone.)
+EspSoftwareSerial::UART mySerial;
+// Размер массива
+const int ARRAY_SIZE = 30;
+uint8_t dataToSend[ARRAY_SIZE] = {0};  // Массив для отправки
+uint8_t receivedData[ARRAY_SIZE] = {0}; // Массив для приема
+volatile bool dataReceived = false; // Флаг для прерывания
+
 WiFiClientSecure client;
 UniversalTelegramBot bot(botToken, client);
 // Checks for new messages every 1 second.
@@ -89,6 +100,13 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println();
+  mySerial.begin(19200, SWSERIAL_8N1, MYPORT_RX, MYPORT_TX, false);
+  if (!mySerial) { // If the object did not initialize, then its configuration is invalid
+    Serial.println("Invalid EspSoftwareSerial pin configuration, check config"); 
+    // while (1) { // Don't continue with invalid configuration
+    //   delay (1000);
+    // }
+  } 
 
   #ifdef ESP8266
     configTime(0, 0, "pool.ntp.org");      // get UTC time via NTP
@@ -227,9 +245,34 @@ void setup() {
 
   Serial.println("local ip");
   Serial.println(WiFi.localIP());
+  // Заполнение массива для отправки
+  for (int i = 0; i < ARRAY_SIZE; i++) {
+      dataToSend[i] = i; // Например, заполняем массив значениями от 0 до 29
+  }
+
+  // Отправка данных
+  mySerial.write(dataToSend, ARRAY_SIZE);
+  Serial.println("Data sent:");
+  for (int i = 0; i < ARRAY_SIZE; i++) {
+      Serial.print(dataToSend[i]);
+      Serial.print(" ");
+  }
+  Serial.println();
 }
 
 void loop() {
+  // Проверка наличия данных для приема
+    if (mySerial.available() >= ARRAY_SIZE) {
+        // Чтение массива из UART
+        mySerial.readBytes(receivedData, ARRAY_SIZE);
+        Serial.println("Data received:");
+        for (int i = 0; i < ARRAY_SIZE; i++) {
+            Serial.print(receivedData[i]);
+            Serial.print(" ");
+        }
+        Serial.println();
+    }
+  
   if (millis() > lastTimeBotRan + botRequestDelay)  {
     int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
 
