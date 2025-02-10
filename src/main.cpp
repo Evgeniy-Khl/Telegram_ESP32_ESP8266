@@ -1,5 +1,6 @@
 /*
 Complete project details at https://RandomNerdTutorials.com/telegram-control-esp32-esp8266-nodemcu-outputs/
+ESPAsyncWebServer at https://github.com/ESP32Async/ESPAsyncWebServer
 */
 #include <SoftwareSerial.h>
 #include <LittleFS.h>             //this needs to be first, or it all crashes and burns...
@@ -7,6 +8,7 @@ Complete project details at https://RandomNerdTutorials.com/telegram-control-esp
 
 #define MYPORT_TX 13
 #define MYPORT_RX 12
+#define SOH			0xDD	// Начало блока = 221
 
 #ifdef ESP32
   #include <LittleFS.h>
@@ -22,7 +24,7 @@ char botToken[50] = "";  // your Bot Token (Get from Botfather);
 char chatID [15] = "";   // your Chat ID (search for “IDBot” or open this link t.me/myidbot in your smartphone.)
 EspSoftwareSerial::UART mySerial;
 // Размер массива
-const int ARRAY_SIZE = 30;
+const int ARRAY_SIZE = 22;
 uint8_t dataToSend[ARRAY_SIZE] = {0};  // Массив для отправки
 uint8_t receivedData[ARRAY_SIZE] = {0}; // Массив для приема
 volatile bool dataReceived = false; // Флаг для прерывания
@@ -100,14 +102,16 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println();
-  mySerial.begin(19200, SWSERIAL_8N1, MYPORT_RX, MYPORT_TX, false);
+  mySerial.setTimeout(50);// Установить таймаут на 100 миллисекунд 
+  mySerial.begin(4800, SWSERIAL_8N1, MYPORT_RX, MYPORT_TX, false);
   if (!mySerial) { // If the object did not initialize, then its configuration is invalid
     Serial.println("Invalid EspSoftwareSerial pin configuration, check config"); 
     // while (1) { // Don't continue with invalid configuration
     //   delay (1000);
     // }
   } 
-
+  Serial.println("Timeout: " + String(mySerial.getTimeout()));
+  
   #ifdef ESP8266
     configTime(0, 0, "pool.ntp.org");      // get UTC time via NTP
     client.setTrustAnchors(&cert); // Add root certificate for api.telegram.org
@@ -262,16 +266,24 @@ void setup() {
 
 void loop() {
   // Проверка наличия данных для приема
-    if (mySerial.available() >= ARRAY_SIZE) {
-        // Чтение массива из UART
-        mySerial.readBytes(receivedData, ARRAY_SIZE);
-        Serial.println("Data received:");
-        for (int i = 0; i < ARRAY_SIZE; i++) {
-            Serial.print(receivedData[i]);
-            Serial.print(" ");
+
+    // if (mySerial.available() == 2){
+    //   mySerial.readBytes(receivedData, 2);
+    //   if (receivedData[0]==SOH && receivedData[1]==SOH){
+    //     Serial.println("Data received START.");
+        if (mySerial.available() >= ARRAY_SIZE) {
+          // Чтение массива из UART
+          mySerial.readBytes(receivedData, ARRAY_SIZE);
+          Serial.println("Data received:");
+          for (int i = 0; i < ARRAY_SIZE; i++) {
+              Serial.print(receivedData[i]);
+              Serial.print("; ");
+          }
+          Serial.println();
         }
-        Serial.println();
-    }
+    //   }
+    // }
+    
   
   if (millis() > lastTimeBotRan + botRequestDelay)  {
     int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
